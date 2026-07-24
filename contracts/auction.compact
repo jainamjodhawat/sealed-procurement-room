@@ -1,0 +1,77 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+export enum Phase {
+  BIDDING,
+  REVEAL,
+  CLOSED
+}
+
+export ledger phase: Phase;
+export ledger commitments: Map<Bytes<32>, Bytes<32>>;
+export ledger highest_bid: Uint<32>;
+export ledger winner: Bytes<32>;
+export ledger admin: Bytes<32>;
+
+constructor(admin_pk: Bytes<32>) {
+  phase = Phase.BIDDING;
+  admin = disclose(admin_pk);
+  highest_bid = 0;
+  winner = pad(32, "no-winner");
+}
+
+witness localSecretKey(): Bytes<32>;
+witness bidAmount(): Uint<32>;
+witness bidSalt(): Bytes<32>;
+
+export circuit submitCommitment(commitment: Bytes<32>): [] {
+  assert(phase == Phase.BIDDING, "Auction is not in bidding phase");
+  const pk = publicKey(localSecretKey());
+  commitments.insert(disclose(pk), disclose(commitment));
+}
+
+export circuit transitionToReveal(): [] {
+  assert(disclose(publicKey(localSecretKey())) == admin, "Only admin can transition phase");
+  phase = Phase.REVEAL;
+}
+
+export circuit revealBid(): [] {
+  assert(phase == Phase.REVEAL, "Auction is not in reveal phase");
+  
+  const sk = localSecretKey();
+  const pk = publicKey(sk);
+  const amt = bidAmount();
+  const salt = bidSalt();
+
+  // Verify commitment matches what was submitted
+  const calculated_commitment = computeCommitment(amt, salt, sk);
+  
+  assert(commitments.member(disclose(pk)), "No commitment found for bidder");
+  const stored_commitment = commitments.lookup(disclose(pk));
+  assert(stored_commitment == calculated_commitment, "Revealed bid does not match commitment");
+
+  // Conditionally update highest bid and winner
+  if (disclose(amt) > highest_bid) {
+    highest_bid = disclose(amt);
+    winner = disclose(pk);
+  }
+}
+
+export circuit closeAuction(): [] {
+  assert(disclose(publicKey(localSecretKey())) == admin, "Only admin can close auction");
+  phase = Phase.CLOSED;
+}
+
+export circuit computeCommitment(amount: Uint<32>, salt: Bytes<32>, sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([
+    pad(32, "auction:commit:"),
+    amount as Field as Bytes<32>,
+    salt,
+    sk
+  ]);
+}
+
+export circuit publicKey(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "auction:pk:"), sk]);
+}
