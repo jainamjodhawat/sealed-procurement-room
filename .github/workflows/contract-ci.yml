@@ -1,0 +1,55 @@
+name: Sealed Procurement Room · Compact CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - 'src/test/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/contract-ci.yml'
+  pull_request:
+    paths:
+      - 'contracts/**'
+      - 'src/test/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/contract-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Setup Compact Compiler
+        uses: midnightntwrk/setup-compact-action@v1
+        with:
+          compact-version: 'latest'
+      - name: Compile Compact contract
+        run: npm run compile
+      - name: Run contract tests
+        run: npm test
+      - name: Upload generated contract artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jaynam-compact-${{ github.sha }}
+          path: contracts/managed
+          if-no-files-found: error
+          retention-days: 7
