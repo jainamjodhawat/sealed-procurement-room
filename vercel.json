@@ -1,0 +1,6 @@
+{
+  "cleanUrls": true,
+  "alias": "jaynam-a2tw.vercel.app",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
+}
