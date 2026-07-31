@@ -1,5 +1,7 @@
 # Sealed-Bid Procurement Room
 
+![Frontend CI](https://github.com/jainamjodhawat/sealed-procurement-room/actions/workflows/frontend-ci.yml/badge.svg?branch=main) ![Contract CI](https://github.com/jainamjodhawat/sealed-procurement-room/actions/workflows/contract-ci.yml/badge.svg?branch=main)
+
 A commit–reveal procurement floor that lets suppliers compete privately while preserving a verifiable winner.
 
 ## Auction phases
@@ -57,3 +59,6 @@ The frontend workflow builds the Vite application. The contract workflow install
 
 Demo: [watch the sealed procurement flow](https://drive.google.com/file/d/1jL1wpwGAf0QLbzpfDgt22L2805L5zs5a/view?usp=sharing).
 
+## Verification
+
+Privacy is the product feature: supplier bid amounts stay hidden during commitment, while only the permitted reveal and winning outcome become public. Run `npm test`, `npm run compile`, and `npm run build`; the six contract scenarios are documented in [TESTING.md](./TESTING.md), the product scope is in [PROPOSAL.md](./PROPOSAL.md), and both CI workflows run on every push and pull request.
