@@ -1,0 +1,9 @@
+{
+  "network": "preview",
+  "contract": "auction",
+  "contractAddress": "de1f5ca3601f1068275948d0424764c2d8cbb105a07ba87cb59800d04c5d1b66",
+  "transactionHash": "00c0bdf6a2a9d6a0e6acd9f3378c9bf715506eac22a4b7802b8538199747c2884c",
+  "deployer": "mn_addr_preview1k3tkhet070x7z6xaahexcl83vhnzcwp88859ahn6rq57qj27hkrsaxmlh2",
+  "deployedAt": "2026-08-03T18:53:08.674Z",
+  "verifiedBy": "Midnight Preview indexer"
+}
