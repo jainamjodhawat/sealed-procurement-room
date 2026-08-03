@@ -28,14 +28,18 @@ Unrevealed amounts and salts are never required to be published during the commi
 
 ## Deployed instance
 
-| Network | Midnight Preprod |
+| Network | Midnight Preview |
 | --- | --- |
 | Contract | `auction` |
-| Address | `97ca9f6119b5c41f1161e3d1f50897e1569be041c5ed61650e6c1503ad66cbde` |
-| Deployment transaction | `ef02a1e158be86632fe1219587d95ea8ae41b449e3af82c4bc66ee866b19580c` |
-| Confirmation | Midnight Preprod indexer |
+| Address | `de1f5ca3601f1068275948d0424764c2d8cbb105a07ba87cb59800d04c5d1b66` |
+| Deployment transaction | `00c0bdf6a2a9d6a0e6acd9f3378c9bf715506eac22a4b7802b8538199747c2884c` |
+| Deployment account | `mn_addr_preview1k3tkhet070x7z6xaahexcl83vhnzcwp88859ahn6rq57qj27hkrsaxmlh2` |
+| Recorded | `2026-08-03T18:53:08.674Z` |
+| Confirmation | Midnight Preview indexer |
 
 ## Local commands
+
+Synthetic bidders use tNight supplied by the [Preview environment faucet](https://faucet.preview.midnight.network/).
 
 ```bash
 npm install
@@ -51,7 +55,7 @@ A deployment is a wallet/provider operation, not a simulated browser state:
 npm run deploy
 ```
 
-Run this only with Preprod funds and synthetic procurement lots. Do not use production bids or secrets.
+Run this only with Preview funds and synthetic procurement lots. Do not use production bids or secrets.
 
 ## What the automation checks
 

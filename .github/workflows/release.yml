@@ -34,7 +34,7 @@ jobs:
       - name: Write release manifest
         run: |
           cat > release-manifest.json <<EOF
-          {"project":"jaynam","tag":"${GITHUB_REF_NAME}","commit":"${GITHUB_SHA}","network":"preprod"}
+          {"project":"jaynam","tag":"${GITHUB_REF_NAME}","commit":"${GITHUB_SHA}","network":"preview"}
           EOF
       - name: Package release artifacts
         run: |
