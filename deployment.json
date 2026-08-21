@@ -1,4 +1,5 @@
 {
+  "contractName": "auction",
   "contractAddress": "de1f5ca3601f1068275948d0424764c2d8cbb105a07ba87cb59800d04c5d1b66",
   "network": "preview",
   "deployedAt": "2026-08-03T18:53:08.674Z",
