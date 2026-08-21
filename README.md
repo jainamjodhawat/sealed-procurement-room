@@ -4,6 +4,10 @@
 
 A commit–reveal procurement floor that lets suppliers compete privately while preserving a verifiable winner.
 
+## Bid-room evidence envelope
+
+`PROPOSAL.md` defines the procurement case → `src/test/auction.test.ts` proves phase rules → `TESTING.md` documents repeatable checks → `deployment.json` records the confirmed Preview transaction.
+
 ## Auction phases
 
 This project is intentionally phase-driven:

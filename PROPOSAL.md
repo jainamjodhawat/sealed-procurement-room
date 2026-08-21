@@ -1,5 +1,9 @@
 # Product Proposal: Sealed-Bid Procurement Room
 
+**Category selected:** Other — confidential procurement  
+**Repository custodian:** `jainamjodhawat`  
+**Operational state:** Commit/reveal MVP on Preview
+
 ## Problem
 
 Procurement bids must remain competitive and confidential until the reveal window.
@@ -25,4 +29,3 @@ Commitments and final winner state are auditable. Unrevealed bid amounts, salts,
 - Invalid reveals fail.
 - Highest valid bid wins.
 - Phase transitions are administrator-controlled.
-
