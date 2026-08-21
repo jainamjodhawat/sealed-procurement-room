@@ -30,6 +30,8 @@ jobs:
         run: npm ci
       - name: Verify reviewer evidence
         run: npm run verify:repository
+      - name: Run frontend safety tests
+        run: npm test
       - name: Build frontend
         run: npm run build
       - name: Upload frontend artifact

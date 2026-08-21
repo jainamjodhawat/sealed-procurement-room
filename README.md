@@ -70,3 +70,7 @@ Demo: [watch the sealed procurement flow](https://drive.google.com/file/d/1jL1wp
 ## Verification
 
 Privacy is the product feature: supplier bid amounts stay hidden during commitment, while only the permitted reveal and winning outcome become public. Run `npm test`, `npm run compile`, and `npm run build`; the six contract scenarios are documented in [TESTING.md](./TESTING.md), the product scope is in [PROPOSAL.md](./PROPOSAL.md), and both CI workflows run on every push and pull request.
+
+## Procurement control room
+
+Before operating Sealed Procurement Room, read the independent [security model](SECURITY.md) and [operations runbook](OPERATIONS.md). Runtime configuration is fail-closed and its executable checks live in [src/test/runtime-config.test.ts](src/test/runtime-config.test.ts).

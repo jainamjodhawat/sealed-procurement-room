@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 
-const required = ['README.md', 'PROPOSAL.md', 'TESTING.md', 'src/test/auction.test.ts', 'deployment.json'];
+const required = ['README.md', 'PROPOSAL.md', 'TESTING.md', 'src/test/auction.test.ts', 'deployment.json', 'SECURITY.md', 'OPERATIONS.md', 'src/runtimeConfig.ts', 'src/test/runtime-config.test.ts'];
 
 for (const file of required) {
   const details = await stat(file).catch(() => null);
@@ -20,8 +20,8 @@ const scenarios = suite.match(/\b(?:it|test)\s*\(/g)?.length ?? 0;
 const addressPattern = /^[a-f0-9]{64}$/;
 const transactionPattern = /^[a-f0-9]{64,66}$/;
 
-if (!readme.includes('PROPOSAL.md') || !readme.includes('TESTING.md')) {
-  throw new Error('README must link the proposal and verification guide.');
+if (!readme.includes('PROPOSAL.md') || !readme.includes('TESTING.md') || !readme.includes('SECURITY.md') || !readme.includes('OPERATIONS.md')) {
+  throw new Error('README must link proposal, testing, security, and operations evidence.');
 }
 if (proposal.trim().length < 400) throw new Error('Product proposal is too short for review.');
 if (!testing.includes('src/test/auction.test.ts')) throw new Error('TESTING.md must identify the executable suite.');
