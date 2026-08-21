@@ -2,3 +2,10 @@
 node_modules
 dist
 .env
+.env.local
+.DS_Store
+*.log
+npm-audit.json
+proof-server-status.json
+midnight-level-db/
+.nightforge/

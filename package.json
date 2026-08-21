@@ -2,6 +2,9 @@
   "name": "jaynam-dapp",
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20 <21"
+  },
   "scripts": {
     "compile": "npx nightforge compile",
     "deploy": "node deploy.mjs",
