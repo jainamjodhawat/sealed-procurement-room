@@ -4,6 +4,7 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const contractName = 'auction';
 const assetRoot = path.resolve(process.cwd(), 'contracts', 'managed', contractName);
@@ -33,5 +34,4 @@ const midnightZkAssets: Plugin = {
     }
   },
 };
-export default defineConfig({ plugins: [react(), wasm(), topLevelAwait(), midnightZkAssets], build: { outDir: 'dist' } });
-
+export default defineConfig({ resolve: { dedupe: ["@midnight-ntwrk/compact-js", "@midnight-ntwrk/midnight-js-contracts", "effect"], alias: { "isomorphic-ws": fileURLToPath(new URL("./src/browserWebSocket.ts", import.meta.url)) } }, plugins: [react(), wasm(), topLevelAwait(), midnightZkAssets], server: { port: 5177 }, build: { outDir: 'dist' } });

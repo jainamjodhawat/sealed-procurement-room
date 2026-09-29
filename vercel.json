@@ -1,6 +1,6 @@
 {
   "cleanUrls": true,
-  "alias": "jaynam-a2tw.vercel.app",
+  "alias": "sealed-procurement.vercel.app",
   "buildCommand": "npm run build",
   "outputDirectory": "dist"
 }
