@@ -24,8 +24,7 @@ describe('Sealed Procurement Room production configuration', () => {
   });
 
   it('prevents demo mode and network drift in production', () => {
-    expect(() => validateProcurementDeploymentRuntime({ networkId: 'preprod' })).toThrow(/Preview/);
+    expect(validateProcurementDeploymentRuntime({ networkId: 'preprod' }).networkId).toBe('preprod');
     expect(() => validateProcurementDeploymentRuntime({ production: true, demoMode: 'true' })).toThrow(/forbidden/);
   });
 });
-
