@@ -1,6 +1,21 @@
 # Procurement Floor: Shielded Commercial Bidding Protocol 🏗️
 
 
+## Level 4 release evidence — review pending
+
+[Open the hosted application](https://sealed-procurement.vercel.app) · [Setup](SETUP.md) · [Usage](USAGE.md) · [Proposal](PROPOSAL.md) · [Tests](TESTING.md)
+
+The hosted URL responded successfully on 29 September 2026; that check does not prove a wallet transaction works. The recorded contract coordinates are in [deployment.json](deployment.json). Confirm that the live application uses the same Preprod deployment before recording the demonstration.
+
+- Local tests and production build passed. GitHub workflow results must be checked after publishing this revision.
+- Desktop and mobile captures below cover every page. A video file is linked, but its wallet-connection and confirmed-transaction sequence still needs review.
+- **Outstanding: public product X profile URL.** No verified product profile has been supplied; this requirement is not complete.
+- Commit history exceeds 15 entries. Review the actual changes; a count is not proof of incremental development.
+
+[Official Rise In program requirements](https://www.risein.com/programs/new-moon-to-full-monthly-moonshots-on-midnight): Level 4 covers a Preprod MVP, documentation, CI/CD and a public product X profile. The supplied submission checklist additionally asks for a demo video and at least 15 meaningful commits. Automated test calls must not be presented as independent users.
+
+
+
 ## Desktop and mobile walkthrough
 
 Fresh captures of this build at 1440 × 1000 and 390 × 844. Wallet disconnected; no credentials entered. These images document the interface, not transaction finality.
@@ -24,7 +39,6 @@ Capture details: [manifest](screenshots/capture-manifest.json). Recorded walkthr
 [![Midnight Network](https://img.shields.io/badge/Midnight-Preprod%20Testnet-blue?style=for-the-badge&logo=polkadot)](https://midnight.network)
 [![Compact Language](https://img.shields.io/badge/Smart%20Contracts-Compact%200.30.0-6b21a8?style=for-the-badge)](https://docs.midnight.network)
 [![Rise In](https://img.shields.io/badge/Rise%20In-Journey%20to%20Mastery%20Level%204-orange?style=for-the-badge)](https://risein.com)
-[![Status](https://img.shields.io/badge/Level%204%20Capstone-Complete%20%26%20Verified-success?style=for-the-badge)]()
 [![Frontend CI](https://github.com/jaynam04/sealed-bid-commercial-procurement/actions/workflows/frontend-ci.yml/badge.svg?branch=main)](https://github.com/jaynam04/sealed-bid-commercial-procurement/actions/workflows/frontend-ci.yml)
 [![Contract CI](https://github.com/jaynam04/sealed-bid-commercial-procurement/actions/workflows/contract-ci.yml/badge.svg?branch=main)](https://github.com/jaynam04/sealed-bid-commercial-procurement/actions/workflows/contract-ci.yml)
 

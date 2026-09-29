@@ -26,11 +26,11 @@ if (!readme.includes('PROPOSAL.md') || !readme.includes('TESTING.md') || !readme
 if (proposal.trim().length < 400) throw new Error('Product proposal is too short for review.');
 if (!testing.includes('src/test/auction.test.ts')) throw new Error('TESTING.md must identify the executable suite.');
 if (scenarios < 3) throw new Error(`Expected at least 3 tests; found ${scenarios}.`);
-if (deployment.network !== 'preview') throw new Error('Deployment evidence must target Midnight Preview.');
+if (deployment.network !== 'preprod') throw new Error('Level 4 requires Midnight Preprod deployment evidence.');
 if (deployment.contract !== 'auction' && deployment.contractName !== 'auction') {
   throw new Error('Deployment manifest does not identify the auction contract.');
 }
 if (!addressPattern.test(deployment.contractAddress ?? '')) throw new Error('Contract address is not a 64-character hex value.');
 if (!transactionPattern.test(deployment.transactionHash ?? '')) throw new Error('Deployment transaction is not a valid hex identifier.');
 
-console.log('Procurement release gate: proposal, src/test/auction.test.ts, and Preview deployment evidence verified.');
+console.log('Repository structure and Preprod record format checked; live finality, hosting, X profile and video content require separate verification.');
