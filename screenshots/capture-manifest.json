@@ -1,0 +1,66 @@
+{
+  "capturedAt": "2026-09-29T03:38:40.730Z",
+  "walletState": "disconnected",
+  "captures": [
+    {
+      "device": "desktop",
+      "page": "home",
+      "file": "screenshots/desktop/home.png",
+      "overflow": false
+    },
+    {
+      "device": "desktop",
+      "page": "privacy",
+      "file": "screenshots/desktop/privacy.png",
+      "overflow": false
+    },
+    {
+      "device": "desktop",
+      "page": "dashboard",
+      "file": "screenshots/desktop/dashboard.png",
+      "overflow": false
+    },
+    {
+      "device": "desktop",
+      "page": "walletHub",
+      "file": "screenshots/desktop/wallethub.png",
+      "overflow": false
+    },
+    {
+      "device": "desktop",
+      "page": "deployer",
+      "file": "screenshots/desktop/deployer.png",
+      "overflow": false
+    },
+    {
+      "device": "mobile",
+      "page": "home",
+      "file": "screenshots/mobile/home.png",
+      "overflow": false
+    },
+    {
+      "device": "mobile",
+      "page": "privacy",
+      "file": "screenshots/mobile/privacy.png",
+      "overflow": false
+    },
+    {
+      "device": "mobile",
+      "page": "dashboard",
+      "file": "screenshots/mobile/dashboard.png",
+      "overflow": false
+    },
+    {
+      "device": "mobile",
+      "page": "walletHub",
+      "file": "screenshots/mobile/wallethub.png",
+      "overflow": false
+    },
+    {
+      "device": "mobile",
+      "page": "deployer",
+      "file": "screenshots/mobile/deployer.png",
+      "overflow": false
+    }
+  ]
+}
