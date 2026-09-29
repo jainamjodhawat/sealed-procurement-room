@@ -24,7 +24,7 @@ jobs:
       - name: Setup Compact Compiler
         uses: midnightntwrk/setup-compact-action@v1
         with:
-          compact-version: 'latest'
+          compact-version: '0.30.0'
       - name: Compile Compact contract
         run: npm run compile
       - name: Test Compact contract
@@ -34,7 +34,7 @@ jobs:
       - name: Write release manifest
         run: |
           cat > release-manifest.json <<EOF
-          {"project":"jaynam","tag":"${GITHUB_REF_NAME}","commit":"${GITHUB_SHA}","network":"preview"}
+          {"project":"jaynam","tag":"${GITHUB_REF_NAME}","commit":"${GITHUB_SHA}","network":"preprod"}
           EOF
       - name: Package release artifacts
         run: |
