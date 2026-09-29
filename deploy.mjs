@@ -1,6 +1,6 @@
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import { CostModel, QueryContext, createConstructorContext, sampleContractAddress } from '@midnight-ntwrk/compact-runtime';
-import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { setNetworkId, getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
@@ -18,16 +18,22 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { Buffer } from 'buffer';
 import { WebSocket } from 'ws';
+import { persistentSubmission } from './scripts/persistent-submission.mjs';
+import { randomBytes } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 globalThis.WebSocket = WebSocket;
 
-// CONFIGURATION (Preview network; override only for an isolated local devnet)
-const NETWORK_ID = 'preview';
+const projectDir = path.dirname(fileURLToPath(import.meta.url));
+
+// CONFIGURATION (Configurable for Preview or Preprod)
+const NETWORK_ID = process.env.MIDNIGHT_NETWORK_ID || 'preprod';
+const isPreprod = NETWORK_ID === 'preprod';
 const ACCOUNT_INDEX = 4;
-const INDEXER = 'https://indexer.preview.midnight.network/api/v4/graphql';
-const INDEXER_WS = 'wss://indexer.preview.midnight.network/api/v4/graphql/ws';
-const NODE = 'https://rpc.preview.midnight.network';
-const PROOF_SERVER = 'http://127.0.0.1:6300';
+const INDEXER = isPreprod ? 'https://indexer.preprod.midnight.network/api/v4/graphql' : 'https://indexer.preview.midnight.network/api/v3/graphql';
+const INDEXER_WS = isPreprod ? 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws' : 'wss://indexer.preview.midnight.network/api/v3/graphql/ws';
+const NODE = isPreprod ? 'https://rpc.preprod.midnight.network' : 'https://rpc.preview.midnight.network';
+const PROOF_SERVER = process.env.MIDNIGHT_PROOF_SERVER || 'http://127.0.0.1:6300';
 
 const auctionWitnesses = {
   localSecretKey: ({ privateState }) => [privateState, privateState.secretKey],
@@ -35,7 +41,7 @@ const auctionWitnesses = {
   bidSalt: ({ privateState }) => [privateState, privateState.bidSalt],
 };
 
-const isWalletReady = (state) => state.isSynced || state.unshielded.availableCoins.length > 0;
+const isWalletReady = (state) => state.isSynced;
 
 // Load nightforge wallet
 const walletDir = path.join(process.env.HOME, '.nightforge', 'wallets');
@@ -48,13 +54,13 @@ if (files.length === 0) {
   process.exit(1);
 }
 const walletData = JSON.parse(fs.readFileSync(path.join(walletDir, files[0]), 'utf8'));
-console.log(`Using wallet profile: ${walletData.name} | Preview account: ${ACCOUNT_INDEX}`);
+console.log(`Using wallet profile: ${walletData.name} | Preprod account: ${ACCOUNT_INDEX}`);
 
 async function deploy() {
   setNetworkId(NETWORK_ID);
 
   // Load compiled contract
-  const zkConfigPath = path.resolve('contracts', 'managed', 'auction');
+  const zkConfigPath = path.resolve(projectDir, 'contracts', 'managed', 'auction');
   const contractModule = await import(path.resolve(zkConfigPath, 'contract', 'index.js'));
   const compiledContract = CompiledContract.make('auction', contractModule.Contract).pipe(
     CompiledContract.withWitnesses(auctionWitnesses),
@@ -68,33 +74,62 @@ async function deploy() {
   const dustSecretKey = ledger.DustSecretKey.fromSeed(keys[Roles.Dust]);
   const unshieldedKeystore = createKeystore(keys[Roles.NightExternal], getNetworkId());
   const deployerAddress = PublicKey.fromKeyStore(unshieldedKeystore).address;
-  const contractSecret = keys[Roles.Zswap];
+  const privateDir = path.join(projectDir, '.nightforge', 'preprod-test');
+  fs.mkdirSync(privateDir, { recursive: true, mode: 0o700 });
+  const backupFile = path.join(privateDir, 'administrator.json');
+  if (!fs.existsSync(backupFile)) fs.writeFileSync(backupFile, JSON.stringify({
+    network: NETWORK_ID, account: ACCOUNT_INDEX,
+    secret: randomBytes(32).toString('hex'), storagePassword: randomBytes(48).toString('base64'),
+  }), { mode: 0o600, flag: 'wx' });
+  const backup = JSON.parse(fs.readFileSync(backupFile, 'utf8'));
+  if (backup.network !== NETWORK_ID || backup.account !== ACCOUNT_INDEX) throw new Error('Administrator backup mismatch');
+  const contractSecret = Buffer.from(backup.secret, 'hex');
+  const snapshotFile = path.join(privateDir, 'wallet-state.json');
+  const snapshot = fs.existsSync(snapshotFile) ? JSON.parse(fs.readFileSync(snapshotFile, 'utf8')) : null;
+  if (snapshot && (snapshot.network !== NETWORK_ID || snapshot.account !== ACCOUNT_INDEX)) throw new Error('Wallet snapshot mismatch');
   const initialPrivateState = { secretKey: contractSecret, bidAmount: 0n, bidSalt: new Uint8Array(32) };
 
   // Setup configuration object
   const walletConfig = {
     networkId: getNetworkId(),
+    batchUpdates: { size: 1000, timeout: 100, spacing: 0 },
     indexerClientConnection: { indexerHttpUrl: INDEXER, indexerWsUrl: INDEXER_WS },
     provingServerUrl: new URL(PROOF_SERVER),
     relayURL: new URL(NODE.replace(/^http/, 'ws')),
-    costParameters: { additionalFeeOverhead: 300_000_000_000_000n, feeBlocksMargin: 5 },
+    costParameters: { additionalFeeOverhead: 1_000n, feeBlocksMargin: 5 },
     txHistoryStorage: new InMemoryTransactionHistoryStorage(),
   };
 
   console.log('Initializing wallet components...');
   const wallet = await WalletFacade.init({
     configuration: walletConfig,
-    shielded: (cfg) => ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
-    unshielded: (cfg) => UnshieldedWallet(cfg).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore)),
-    dust: (cfg) => DustWallet(cfg).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
+    submissionService: persistentSubmission,
+    shielded: (cfg) => snapshot ? ShieldedWallet(cfg).restore(snapshot.shielded) : ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
+    unshielded: (cfg) => snapshot ? UnshieldedWallet(cfg).restore(snapshot.unshielded) : UnshieldedWallet(cfg).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore)),
+    dust: (cfg) => snapshot ? DustWallet(cfg).restore(snapshot.dust) : DustWallet(cfg).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
   });
   
   await wallet.start(shieldedSecretKeys, dustSecretKey);
-  console.log('Wallet started. Syncing ledger...');
+  console.log('Wallet started. Syncing ledger with bounded timeout...');
 
-  // Wait for wallet to sync
-  await Rx.firstValueFrom(wallet.state().pipe(Rx.throttleTime(5000), Rx.filter(isWalletReady)));
-  console.log('Wallet synced.');
+  // Wait for wallet to sync with bounded timeout
+  const SYNC_TIMEOUT_MS = 120_000;
+  try {
+    await Rx.firstValueFrom(
+      wallet.state().pipe(
+        Rx.throttleTime(5000),
+        Rx.filter(isWalletReady),
+        Rx.timeout({
+          first: SYNC_TIMEOUT_MS,
+          with: () => Rx.throwError(() => new Error(`Wallet synchronization timed out after ${SYNC_TIMEOUT_MS / 1000}s. The public RPC closed or wallet is waiting for synchronization.`)),
+        }),
+      ),
+    );
+    console.log('Wallet synced.');
+  } catch (syncErr) {
+    await wallet.stop().catch(() => {});
+    throw new Error(`Wallet synchronization failed before deployment: ${syncErr.message}`);
+  }
 
   let state = await Rx.firstValueFrom(wallet.state().pipe(Rx.filter(isWalletReady)));
   const balance = state.unshielded.balances[ledger.unshieldedToken().raw] ?? 0n;
@@ -130,11 +165,12 @@ async function deploy() {
   // Build contract providers
   const walletProvider = await createWalletAndMidnightProvider({ wallet, shieldedSecretKeys, dustSecretKey, unshieldedKeystore });
   const accountId = walletProvider.getCoinPublicKey();
-  const storagePassword = `${Buffer.from(accountId, 'hex').toString('base64')}!`;
+  const storagePassword = backup.storagePassword;
   const zkConfigProvider = new NodeZkConfigProvider(zkConfigPath);
 
   const providers = {
     privateStateProvider: levelPrivateStateProvider({
+      midnightDbName: path.join(privateDir, 'contract-state'),
       privateStateStoreName: 'auction-private-state',
       accountId,
       privateStoragePasswordProvider: () => storagePassword,
@@ -158,7 +194,13 @@ async function deploy() {
   const adminPubkey = bootstrapContract.circuits.publicKey(bootstrapContext, contractSecret).result;
 
   console.log('Generating ZK proofs & deploying Auction contract (takes 30-60 seconds)...');
-  const deployed = await deployContract(providers, {
+  const replacementFile = path.join(privateDir, 'replacement-deployment.json');
+  const previousReplacement = fs.existsSync(replacementFile) ? JSON.parse(fs.readFileSync(replacementFile, 'utf8')) : null;
+  if (previousReplacement && previousReplacement.network !== NETWORK_ID) throw new Error('Replacement network mismatch');
+  const deployed = previousReplacement ? await findDeployedContract(providers, {
+    compiledContract, contractAddress: previousReplacement.contractAddress,
+    privateStateId: 'auctionState', initialPrivateState,
+  }) : await deployContract(providers, {
     compiledContract,
     privateStateId: 'auctionState',
     initialPrivateState,
@@ -171,7 +213,10 @@ async function deploy() {
   console.log(`Address: ${contractAddress}`);
   console.log(`Network: ${NETWORK_ID}`);
 
-  fs.writeFileSync('deployment.json', JSON.stringify({
+  const outPath = path.resolve(projectDir, 'deployment.json');
+  const pubPath = path.resolve(projectDir, 'public', 'deployment.json');
+  if (fs.existsSync(outPath)) fs.copyFileSync(outPath, path.join(privateDir, `previous-deployment-${Date.now()}.json`));
+  fs.writeFileSync(outPath, JSON.stringify({
     contractName: 'auction',
     contractAddress,
     network: NETWORK_ID,
@@ -179,7 +224,41 @@ async function deploy() {
     deployer: deployerAddress,
     transactionHash,
   }, null, 2));
-  console.log('Saved deployment details to deployment.json');
+  fs.copyFileSync(outPath, pubPath);
+  fs.copyFileSync(outPath, replacementFile);
+  console.log(`Saved deployment details to ${outPath} and ${pubPath}`);
+
+  if (process.env.DEMO_TRANSACTIONS === '50') {
+    const batchFile = path.join(privateDir, 'demo-transactions.json');
+    const batch = fs.existsSync(batchFile) ? JSON.parse(fs.readFileSync(batchFile, 'utf8')) : {
+      contractAddress, network: NETWORK_ID,
+      users: Array.from({ length: 50 }, (_, i) => ({ secret: randomBytes(32).toString('hex'), salt: randomBytes(32).toString('hex'), amount: String(100 + i), status: 'new' })),
+    };
+    if (batch.contractAddress !== contractAddress || batch.network !== NETWORK_ID || batch.users.length !== 50) throw new Error('Demo batch mismatch');
+    const saveBatch = () => {
+      fs.writeFileSync(batchFile + '.tmp', JSON.stringify(batch), { mode: 0o600 });
+      fs.renameSync(batchFile + '.tmp', batchFile);
+    };
+    saveBatch();
+    for (const [index, user] of batch.users.entries()) {
+      if (user.status === 'confirmed') continue;
+      if (user.status !== 'new') throw new Error(`Demo ${index + 1} has an unresolved submission; reconcile before retrying`);
+      const privateState = { secretKey: Buffer.from(user.secret, 'hex'), bidSalt: Buffer.from(user.salt, 'hex'), bidAmount: BigInt(user.amount) };
+      const commitment = contractModule.pureCircuits.computeCommitment(privateState.bidAmount, privateState.bidSalt, privateState.secretKey);
+      await providers.privateStateProvider.set('auctionState', privateState);
+      user.status = 'submitting'; saveBatch();
+      const result = await deployed.callTx.submitCommitment(commitment);
+      const txId = result.public.txId;
+      if (!txId) throw new Error('Confirmed call did not return a transaction identifier');
+      const chainState = await providers.publicDataProvider.queryContractState(contractAddress);
+      if (!chainState) throw new Error('Unable to verify updated contract state');
+      const live = contractModule.ledger(chainState.data);
+      const bidder = contractModule.pureCircuits.publicKey(privateState.secretKey);
+      if (!live.commitments.member(bidder) || !Buffer.from(live.commitments.lookup(bidder)).equals(Buffer.from(commitment))) throw new Error('Confirmed commitment missing from ledger');
+      user.status = 'confirmed'; user.transactionId = txId; saveBatch();
+      console.log(JSON.stringify({ demoConfirmed: index + 1, target: 50, transactionId: txId }));
+    }
+  }
   
   await wallet.stop();
   process.exit(0);
