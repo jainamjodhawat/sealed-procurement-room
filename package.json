@@ -8,7 +8,7 @@
   "scripts": {
     "compile": "npx nightforge compile",
     "deploy": "node deploy.mjs",
-    "test": "vitest run",
+    "test": "vitest run src/test && node --test scripts/persistent-submission.test.mjs",
     "verify:repository": "node scripts/verify-submission.mjs",
     "prepare:procurement-zk": "node scripts/sync-zk-assets.mjs",
     "predev": "npm run prepare:procurement-zk",
@@ -27,7 +27,7 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
-    "@midnight-ntwrk/compact-js": "2.5.1",
+    "@midnight-ntwrk/compact-js": "2.5.0",
     "@midnight-ntwrk/compact-runtime": "0.15.0",
     "@midnight-ntwrk/dapp-connector-api": "^4.0.1",
     "@midnight-ntwrk/ledger": "4.0.0",
