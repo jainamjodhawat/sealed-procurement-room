@@ -1,7 +1,16 @@
-import { useState, useEffect } from 'react';
-import { Gavel, Clock, Lock, Database, Wallet, Cpu, History } from 'lucide-react';
-import { submitAuctionCircuit } from './midnightClient';
-import { verifyProcurementDeployment, validateProcurementDeploymentRuntime } from './runtimeConfig';
+import OperatorSetup from './OperatorSetup';
+import { useState, useEffect } from "react";
+import {
+  deployAuctionContract,
+  auctionBytes32,
+  auctionCommitment,
+  readAuctionLedger,
+  submitAuctionCircuit,
+} from "./midnightClient";
+import {
+  verifyProcurementDeployment,
+  validateProcurementDeploymentRuntime,
+} from "./runtimeConfig";
 
 const RUNTIME = validateProcurementDeploymentRuntime({
   networkId: import.meta.env.VITE_NETWORK_ID,
@@ -12,12 +21,26 @@ const RUNTIME = validateProcurementDeploymentRuntime({
 });
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const readRoute = () =>
+    ["dashboard", "deployer", "walletHub", "privacy"].includes(
+      location.hash.slice(2),
+    )
+      ? location.hash.slice(2)
+      : "home";
+  const [activeTab, updateTab] = useState(readRoute);
+  useEffect(() => {
+    const navigate = () => {
+      if (["#content", "#main-content"].includes(window.location.hash)) return;
+      updateTab(readRoute());
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener("hashchange", navigate);
+    return () => window.removeEventListener("hashchange", navigate);
+  }, []);
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<string>("0.00");
   const [connectingWallet, setConnectingWallet] = useState(false);
-  const [faucetLoading, setFaucetLoading] = useState(false);
   const [laceDetected, setLaceDetected] = useState(false);
   const [connectedWallet, setConnectedWallet] = useState<any>(null);
 
@@ -25,49 +48,62 @@ export default function App() {
   const [contractAddress, setContractAddress] = useState<string | null>(null);
   const [runtimeIssue, setRuntimeIssue] = useState<string | null>(null);
   const [isDeploying, setIsDeploying] = useState(false);
-  const [deployStep, setDeployStep] = useState(0);
 
-  const [ledger, setLedger] = useState({ commitments_count: 5, highest_bid: 0, phase: "BIDDING", winner: "unrevealed" });
-  const [formValues, setFormValues] = useState({ bid_value: 450, salt: "" });
+  const [ledger, setLedger] = useState({
+    commitments_count: 0,
+    highest_bid: 0,
+    phase: "Not loaded",
+    winner: "Not loaded",
+  });
+  const [formValues, setFormValues] = useState({
+    bid_value: 250,
+    bidder_secret: "0505050505050505050505050505050505050505050505050505050505050505",
+    salt: "2525252525252525252525252525252525252525252525252525252525252525",
+  });
   const [logs, setLogs] = useState<any[]>([]);
   const [isProving, setIsProving] = useState(false);
-  const [provingStep, setProvingStep] = useState(0);
-
-  const proofSteps = [
-    "Hashing bid value with private salt...",
-    "Verifying bidding conditions parameter...",
-    "Creating on-chain shielded commitment...",
-    "Submitting hash proof..."
-  ];
-
-  const deploySteps = [
-    "Initializing sealed auction parameters...",
-    "Setting up bidding phase timers...",
-    "Deploying ZK state registry on-chain..."
-  ];
 
   useEffect(() => {
-    fetch('/deployment.json')
-      .then(response => {
-        if (!response.ok) throw new Error('Sealed Procurement Room: deployment.json could not be loaded.');
+    fetch("/deployment.json")
+      .then((response) => {
+        if (!response.ok)
+          throw new Error(
+            "Sealed Procurement Room: deployment.json could not be loaded.",
+          );
         return response.json();
       })
-      .then(deployment => {
+      .then((deployment) => {
         const verified = verifyProcurementDeployment(deployment);
-        if (RUNTIME.contractAddress && RUNTIME.contractAddress !== verified.contractAddress) {
-          throw new Error('Sealed Procurement Room: environment address does not match deployment evidence.');
+        if (
+          RUNTIME.contractAddress &&
+          RUNTIME.contractAddress !== verified.contractAddress
+        ) {
+          throw new Error(
+            "Sealed Procurement Room: environment address does not match deployment evidence.",
+          );
         }
-        setContractAddress(verified.contractAddress);
-        setContractDeployed(true);
+        if (verified.network === RUNTIME.networkId) {
+          setContractAddress(verified.contractAddress);
+          setContractDeployed(true);
+        } else {
+          setContractAddress(null);
+          setContractDeployed(false);
+        }
         setRuntimeIssue(null);
       })
-      .catch(error => {
+      .catch((error) => {
         setContractAddress(null);
         setContractDeployed(false);
-        setRuntimeIssue(error instanceof Error ? error.message : 'Sealed Procurement Room: configuration failed.');
+        setRuntimeIssue(
+          error instanceof Error
+            ? error.message
+            : "Sealed Procurement Room: configuration failed.",
+        );
       });
     const detectLace = () => {
-      const hasMidnightWallet = Object.values((window as any).midnight ?? {}).some((candidate: any) => typeof candidate?.connect === 'function');
+      const hasMidnightWallet = Object.values(
+        (window as any).midnight ?? {},
+      ).some((candidate: any) => typeof candidate?.connect === "function");
       setLaceDetected(hasMidnightWallet);
     };
     detectLace();
@@ -78,13 +114,25 @@ export default function App() {
   const connectLace = async () => {
     setConnectingWallet(true);
     try {
-      const candidates = Object.values((window as any).midnight ?? {}) as Array<{
+      const candidates = Object.values(
+        (window as any).midnight ?? {},
+      ) as Array<{
         connect?: (networkId: string) => Promise<any>;
         name?: string;
+        rdns?: string;
       }>;
-      const wallet = candidates.find(candidate => typeof candidate.connect === 'function');
+      const oneAm = candidates.find(
+        (c) =>
+          /1am/i.test(`${c.name ?? ""} ${c.rdns ?? ""}`) &&
+          typeof c.connect === "function",
+      );
+      const wallet =
+        oneAm ??
+        candidates.find((candidate) => typeof candidate.connect === "function");
       if (!wallet?.connect) {
-        throw new Error('No Midnight wallet connector was detected. Install 1AM or Lace and unlock it.');
+        throw new Error(
+          "No Midnight wallet connector was detected. Install 1AM or Lace and unlock it.",
+        );
       }
 
       const connected = await wallet.connect(RUNTIME.networkId);
@@ -101,293 +149,544 @@ export default function App() {
         setContractAddress(import.meta.env.VITE_CONTRACT_ADDRESS);
         setContractDeployed(true);
       }
-      logTransaction('wallet', 'MIDNIGHT WALLET CONNECTED', '—', 'Connected through the Midnight DApp Connector API');
+      logTransaction(
+        "wallet",
+        "MIDNIGHT WALLET CONNECTED",
+        "—",
+        "Connected through the Midnight DApp Connector API",
+      );
     } catch (err) {
-      console.error('Midnight wallet connection failed:', err);
-      alert(err instanceof Error ? err.message : 'Midnight wallet connection failed.');
+      console.error("Midnight wallet connection failed:", err);
+      const raw = err instanceof Error ? err.message : String(err || "");
+      const msg = (raw.includes("tabs:outgoing.message.ready") || raw.includes("No Listener")) ? "Wallet extension is asleep or locked. Please open and unlock your 1AM / Lace wallet extension, then retry." : (raw || "Midnight wallet connection failed.");
+      alert(msg);
     } finally {
       setConnectingWallet(false);
     }
   };
 
-
-
   const disconnectLace = () => {
     setWalletConnected(false);
     setWalletAddress(null);
     setWalletBalance("0.00");
-    logTransaction('0x0000...0000', 'LACE WALLET DISCONNECTED', '0.00 tNIGHT', 'Disconnected wallet context');
+    logTransaction(
+      "0x0000...0000",
+      "1AM WALLET DISCONNECTED",
+      "0.00 tNIGHT",
+      "Disconnected wallet context",
+    );
   };
 
   const requestFaucet = () => {
     if (!walletConnected) return;
-    window.open(RUNTIME.faucetUrl, '_blank', 'noopener,noreferrer');
-    logTransaction('—', 'FAUCET OPENED', '—', 'Funding must be confirmed by the official Midnight Preview faucet and wallet balance refresh.');
+    window.open(RUNTIME.faucetUrl, "_blank", "noopener,noreferrer");
+    logTransaction(
+      "—",
+      "FAUCET OPENED",
+      "—",
+      "Funding must be confirmed by the official Midnight Preview faucet and wallet balance refresh.",
+    );
   };
 
   const deployContractAction = async () => {
-    if (!contractAddress || runtimeIssue) {
-      alert('Sealed Procurement Room: no verified Preview deployment is available.');
+    if (!connectedWallet) {
+      alert("Connect a Midnight wallet before deploying.");
       return;
     }
-    setContractDeployed(true);
-    logTransaction('—', 'VERIFIED DEPLOYMENT ATTACHED', '—', `Using finalized Preview contract ${contractAddress}`);
+    setIsDeploying(true);
+    try {
+      const result = await deployAuctionContract(connectedWallet);
+      setContractAddress(result.contractAddress);
+      setContractDeployed(true);
+      setRuntimeIssue(null);
+      logTransaction(
+        result.txId,
+        "CONFIRMED ON MIDNIGHT",
+        "—",
+        `Fresh ${RUNTIME.networkId} deployment ${result.contractAddress}`,
+      );
+    } catch (error) {
+      alert(
+        error instanceof Error ? error.message : "Contract deployment failed.",
+      );
+    } finally {
+      setIsDeploying(false);
+    }
   };
 
-  const submitBid = async () => {
+  const submitBid = async (circuit: 'submitCommitment' | 'revealBid' = 'submitCommitment') => {
     if (!walletConnected || !contractDeployed || !contractAddress) return;
     try {
-      const result = await submitAuctionCircuit((window as any).__midnightConnectedWallet, contractAddress, 'submitCommitment', [new TextEncoder().encode(`bid:${formValues.bid_value}:salt:${formValues.salt}`)]);
-      setLedger(prev => ({ ...prev, commitments_count: prev.commitments_count + 1 }));
-      logTransaction(result.txId, 'CONFIRMED ON MIDNIGHT', '—', 'Confirmed submitCommitment on ' + contractAddress);
+      const privateState = {
+        secretKey: auctionBytes32(formValues.bidder_secret, "Bidder secret"),
+        bidAmount: BigInt(formValues.bid_value),
+        bidSalt: auctionBytes32(formValues.salt, "Bid salt"),
+      };
+      const result = await submitAuctionCircuit(
+        (window as any).__midnightConnectedWallet,
+        contractAddress,
+        circuit,
+        circuit === 'submitCommitment' ? [auctionCommitment(privateState)] : [],
+        privateState,
+      );
+      const chain = await readAuctionLedger(
+        (window as any).__midnightConnectedWallet,
+        contractAddress,
+      );
+      setLedger({
+        commitments_count: chain.commitmentCount,
+        highest_bid: chain.highestBid,
+        phase: chain.phase,
+        winner: chain.winner.slice(0, 12) + "…",
+      });
+      logTransaction(
+        result.txId,
+        "CONFIRMED ON MIDNIGHT",
+        "—",
+        "Confirmed " + circuit + " on " + contractAddress,
+      );
       return;
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'The Midnight transaction failed.');
-      logTransaction('—', 'TRANSACTION FAILED', '—', err instanceof Error ? err.message : 'Unknown transaction failure');
+      alert(
+        err instanceof Error ? err.message : "The Midnight transaction failed.",
+      );
+      logTransaction(
+        "—",
+        "TRANSACTION FAILED",
+        "—",
+        err instanceof Error ? err.message : "Unknown transaction failure",
+      );
       return;
     }
-
   };
 
-  const logTransaction = (hash: string, status: string, fee: string, details: string) => {
-    setLogs(prev => [
+  const logTransaction = (
+    hash: string,
+    status: string,
+    fee: string,
+    details: string,
+  ) => {
+    setLogs((prev) => [
       {
         hash,
-        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
         status,
         fee,
-        details
+        details,
       },
-      ...prev
+      ...prev,
     ]);
   };
 
-  if (runtimeIssue) {
-    return (
-      <main role="alert" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '32px', background: '#080b12', color: '#f8fafc' }}>
-        <section style={{ width: 'min(620px, 100%)', border: '1px solid #ef4444', borderRadius: '18px', padding: '28px', background: '#151922' }}>
-          <p style={{ margin: 0, color: '#fca5a5', fontWeight: 800, letterSpacing: '0.08em' }}>SAFE START BLOCKED</p>
-          <h1 style={{ margin: '12px 0', fontSize: 'clamp(1.7rem, 5vw, 2.6rem)' }}>Sealed Procurement Room</h1>
-          <p style={{ lineHeight: 1.65, color: '#cbd5e1' }}>{runtimeIssue}</p>
-          <p style={{ lineHeight: 1.65, color: '#94a3b8' }}>No wallet or contract operation was attempted. Restore this repository's own Preview deployment record, then reload.</p>
-          <button onClick={() => window.location.reload()} style={{ marginTop: '8px', padding: '12px 18px', border: 0, borderRadius: '10px', fontWeight: 800, cursor: 'pointer' }}>Retry configuration</button>
-        </section>
-      </main>
-    );
-  }
-
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', fontFamily: 'Outfit, sans-serif' }}>
-      
-      {/* Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 0', borderBottom: '1px solid var(--border-color)', marginBottom: '30px' }}>
-        <div>
-          <span style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '20px', background: 'rgba(217, 119, 6, 0.15)', color: '#f59e0b', border: '1px solid rgba(217, 119, 6, 0.3)', fontWeight: 600 }}>Project 4</span>
-          <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginTop: '6px' }}>Sealed-Bid Procurement Room</h1>
-        </div>
-        <div>
-          {walletConnected ? (
-            <div style={{ background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.25)', borderRadius: '12px', padding: '8px 16px' }}>
-              Balance: <strong style={{ color: '#f59e0b' }}>{walletBalance} tNIGHT</strong>
-            </div>
-          ) : (
-            <button onClick={connectLace} style={{ width: 'auto' }}>Connect Lace Wallet</button>
-          )}
-        </div>
+    <div className="product-shell">
+      <a
+        className="skip-link"
+        href="#content"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("content")?.focus();
+        }}
+      >
+        Skip to content
+      </a>
+      <header className="site-header">
+        <a className="brand" href="#/">
+          <span className="brand-mark">S/</span>Sealed Procurement
+          <small>Procurement room</small>
+        </a>
+        <nav aria-label="Primary navigation">
+          <a href="#/" aria-current={activeTab === "home" ? "page" : undefined}>
+            About
+          </a>
+          <a
+            href="#/privacy"
+            aria-current={activeTab === "privacy" ? "page" : undefined}
+          >
+            Privacy
+          </a>
+          <a className="button" href="#/dashboard">
+            Open workspace <span aria-hidden="true">↗</span>
+          </a>
+        </nav>
       </header>
-
-<section className="home-dashboard" aria-labelledby="home-dashboard-title">
-        <div className="home-dashboard__lead">
-          <span className="home-kicker">Procurement floor</span>
-          <h2 id="home-dashboard-title">Auction state</h2>
-          <p>Lock a bid now; reveal only when the room closes.</p>
-          <div className="home-actions">
-            <button type="button" onClick={() => setActiveTab('dashboard')}>Open Workspace</button>
-            <button type="button" className="home-secondary" onClick={() => setActiveTab('privacy')}>Read Privacy Model</button>
+      {activeTab === "home" ? (
+        <main id="content" tabIndex={-1} className="landing">
+          <div className="hero">
+            <div className="hero-copy">
+              <p className="eyebrow">Sealed-bid procurement · Midnight</p>
+              <h1>
+                A sealed bid.
+                <br />
+                An open process.
+              </h1>
+              <p className="intro">
+                Commit a bid without publishing its value at submission. A
+                focused procurement workspace built around the commit–reveal
+                process.
+              </p>
+              <a className="button" href="#/dashboard">
+                Prepare a commitment <span aria-hidden="true">→</span>
+              </a>
+              <p className="fineprint">
+                Test-network software. A compatible Midnight wallet is required
+                for transactions.
+              </p>
+            </div>
+            <ol className="bid-process">
+              <li>
+                <span>01 / COMMIT</span>
+                <h2>Seal your offer.</h2>
+                <p>Your bid and salt produce a public commitment.</p>
+              </li>
+              <li>
+                <span>02 / REVEAL</span>
+                <h2>Show the match.</h2>
+                <p>The reveal circuit checks the bid against its commitment.</p>
+              </li>
+              <li>
+                <span>03 / CLOSE</span>
+                <h2>Record the result.</h2>
+                <p>The contract records the highest bid and winner.</p>
+              </li>
+            </ol>
           </div>
-        </div>
-        <div className="home-dashboard__grid">
-          <article className="home-card"><span>Network</span><strong>Midnight Preview</strong><small>{contractDeployed ? 'Contract verified' : 'Contract setup pending'}</small></article>
-          <article className="home-card"><span>Current signal</span><strong>Commit phase active</strong><small>Sealed bids only</small></article>
-          <article className="home-card"><span>Wallet session</span><strong>{walletConnected ? 'Connected' : 'Not connected'}</strong><small>{walletConnected ? walletBalance + ' tNIGHT available' : 'Connect 1AM to continue'}</small></article>
-          <article className="home-card"><span>Contract address</span><strong className="home-address">{contractAddress ? contractAddress.slice(0, 14) + '…' : 'Awaiting deployment'}</strong><small>Unique project deployment</small></article>
-        </div>
-      </section>
-
-      {/* Navigation */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '30px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '10px' }}>
-        <button onClick={() => setActiveTab('dashboard')} style={{ width: 'auto', padding: '10px 20px', background: activeTab === 'dashboard' ? 'var(--color-primary)' : 'transparent', color: activeTab === 'dashboard' ? 'white' : 'var(--text-secondary)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>🔨 Bid Committer & Reveal</button>
-        <button onClick={() => setActiveTab('deployer')} style={{ width: 'auto', padding: '10px 20px', background: activeTab === 'deployer' ? 'var(--color-primary)' : 'transparent', color: activeTab === 'deployer' ? 'white' : 'var(--text-secondary)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>📑 Auction Deployer</button>
-        <button onClick={() => setActiveTab('walletHub')} style={{ width: 'auto', padding: '10px 20px', background: activeTab === 'walletHub' ? 'var(--color-primary)' : 'transparent', color: activeTab === 'walletHub' ? 'white' : 'var(--text-secondary)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>💰 Bidder Wallet</button>
-        <button onClick={() => setActiveTab('privacy')} style={{ width: 'auto', padding: '10px 20px', background: activeTab === 'privacy' ? 'var(--color-primary)' : 'transparent', color: activeTab === 'privacy' ? 'white' : 'var(--text-secondary)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>🔒 Auction Privacy Model</button>
-      </div>
-
-      <main style={{ minHeight: '400px' }}>
-        {activeTab === 'dashboard' && (
-          <div>
-            {(!walletConnected || !contractDeployed) && (
-              <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239,68,68,0.2)', padding: '20px', borderRadius: '12px', marginBottom: '30px', textAlign: 'center' }}>
-                <h3 style={{ margin: 0, color: '#f87171' }}>⚠️ Missing Setup Prerequisites</h3>
-                <p style={{ color: 'var(--text-secondary)', margin: '8px 0 0 0', fontSize: '0.9rem' }}>
-                  {!walletConnected ? "Please connect your Lace Wallet in the Wallet Hub." : "Please deploy the Compact contract in the ZK Deployer tab."}
+          <section className="landing-details">
+            <div>
+              <p className="eyebrow">Purpose</p>
+              <h2>Keep the opening offer sealed.</h2>
+              <p>
+                For participants preparing a commitment for a sealed-bid
+                auction. Save your original bid, salt, and secret securely: the
+                reveal process depends on the same inputs.
+              </p>
+            </div>
+            <div>
+              <p className="eyebrow">Privacy, precisely</p>
+              <p>
+                Commitments are public. Bid amounts are hidden during
+                commitment, then disclosed by the reveal circuit. Revealed bids,
+                the highest bid, winner, and transaction activity are public.
+              </p>
+              <a href="#/privacy">Read the privacy boundaries →</a>
+            </div>
+          </section>
+        </main>
+      ) : (
+        <div className="workspace-layout">
+          <nav className="workspace-nav" aria-label="Workspace pages">
+            <p className="eyebrow">Workspace</p>
+            {[
+              ["dashboard", "Commit a bid"],
+              ["walletHub", "Wallet & activity"],
+              ["deployer", "Contract setup"],
+              ["privacy", "Privacy boundaries"],
+            ].map(([id, label]) => (
+              <a
+                key={id}
+                href={"#/" + id}
+                aria-current={activeTab === id ? "page" : undefined}
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
+          <main id="content" tabIndex={-1} className="workspace">
+            <div className="workspace-heading">
+              <div>
+                <p className="eyebrow">Sealed-bid operations</p>
+                <h1>
+                  {activeTab === "dashboard"
+                    ? "Prepare your bid"
+                    : activeTab === "walletHub"
+                      ? "Wallet & activity"
+                      : activeTab === "deployer"
+                        ? "Contract setup"
+                        : "Privacy boundaries"}
+                </h1>
+              </div>
+              <span className="network-tag">Midnight {RUNTIME.networkId}</span>
+            </div>
+            {runtimeIssue && (
+              <section className="notice" role="alert">
+                <h2>Configuration needs attention</h2>
+                <p>{runtimeIssue}</p>
+                <p>
+                  Wallet and contract actions are blocked until configuration is
+                  restored.
                 </p>
-              </div>
+                <button onClick={() => window.location.reload()}>
+                  Retry configuration
+                </button>
+              </section>
             )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px', opacity: (walletConnected && contractDeployed) ? 1 : 0.4, pointerEvents: (walletConnected && contractDeployed) ? 'auto' : 'none' }}>
-              <div>
-                <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px', marginBottom: '30px' }}>
-                  <h2 style={{ fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#d97706' }}><Clock className="w-5 h-5" /> Bidding Registry Status</h2>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Bids Committed</span>
-                      <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{ledger.commitments_count} bids</div>
-                    </div>
-                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Winner Identity</span>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'white', marginTop: '6px' }}>{ledger.winner}</div>
-                    </div>
-                  </div>
-                </section>
-
-                <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px' }}>
-                  <h2 style={{ fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#d97706' }}><Database className="w-5 h-5" /> Public State parameters</h2>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(0,0,0,0.2)', borderRadius: '10px' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>current_phase</span>
-                    <span style={{ fontWeight: 700 }}>{ledger.phase}</span>
-                  </div>
-                </section>
-              </div>
-
-              <div>
-                <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px' }}>
-                  <h2 style={{ fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#d97706' }}><Lock className="w-5 h-5" /> Private Bid Placement</h2>
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>Private Bid Value (tNIGHT)</label>
-                    <input 
-                      type="number" 
-                      value={formValues.bid_value} 
-                      onChange={e => setFormValues({ ...formValues, bid_value: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>Private Salt Value</label>
-                    <input 
-                      type="text" 
-                      value={formValues.salt} 
-                      onChange={e => setFormValues({ ...formValues, salt: e.target.value })}
-                    />
-                  </div>
-                  <button onClick={submitBid} disabled={isProving}>
-                    {isProving ? "Hashing bid parameters..." : "Generate ZK Proof & Commit"}
-                  </button>
-
-                  {isProving && (
-                    <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(217,119,6,0.05)', border: '1px dashed #d97706', borderRadius: '8px', fontSize: '0.8rem' }}>
-                      {proofSteps.map((step, idx) => (
-                        <div key={idx} style={{ padding: '3px 0', color: idx === provingStep ? 'white' : 'var(--text-secondary)', opacity: idx <= provingStep ? 1 : 0.4 }}>
-                          {idx < provingStep ? '✓' : '●'} {step}
+            {activeTab === "dashboard" && (
+              <>
+                <div className="session-strip">
+                  <span>
+                    {walletConnected
+                      ? "Wallet connected"
+                      : "Wallet not connected"}
+                  </span>
+                  <span>
+                    {contractDeployed
+                      ? "Deployment record loaded"
+                      : "Contract setup required"}
+                  </span>
+                  <a href="#/walletHub">Manage wallet →</a>
+                </div>
+                <div className="task-grid">
+                  <aside className="context-panel">
+                    <p className="eyebrow">Room state</p>
+                    <h2>
+                      Commit first.
+                      <br />
+                      Reveal later.
+                    </h2>
+                    <dl>
+                      <dt>Auction phase</dt>
+                      <dd>{ledger.phase}</dd>
+                      <dt>Committed bids</dt>
+                      <dd>
+                        {ledger.phase === "Not loaded"
+                          ? "—"
+                          : ledger.commitments_count}
+                      </dd>
+                      <dt>Winner</dt>
+                      <dd>{ledger.winner}</dd>
+                    </dl>
+                    <p className="fineprint">
+                      State updates after a confirmed commitment. This interface
+                      submits commitments; reveal and phase management are not
+                      available here.
+                    </p>
+                  </aside>
+                  <section className="panel" aria-busy={isProving}>
+                    <p className="eyebrow">Private inputs</p>
+                    <h2>Bid commitment</h2>
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (isProving) return;
+                        setIsProving(true);
+                        try {
+                          await submitBid();
+                        } finally {
+                          setIsProving(false);
+                        }
+                      }}
+                    >
+                      <fieldset
+                        disabled={
+                          !walletConnected ||
+                          !contractDeployed ||
+                          !!runtimeIssue ||
+                          isProving
+                        }
+                      >
+                        <label>
+                          Bid amount
+                          <input
+                            required
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={formValues.bid_value}
+                            onChange={(e) =>
+                              setFormValues({
+                                ...formValues,
+                                bid_value: Number(e.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '8px', border: '1px solid rgba(99, 102, 241, 0.2)', margin: '14px 0' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }} />
+                          <span style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>Shielded Bidder Identity Active</span>
                         </div>
+                        <details style={{ marginBottom: '16px', fontSize: '0.8rem', color: '#94a3b8' }}>
+                          <summary style={{ cursor: 'pointer', padding: '4px 0', userSelect: 'none' }}>Advanced / Custom Salt & Secret</summary>
+                          <div style={{ marginTop: '8px' }}>
+                            <label>
+                              Private bid salt
+                              <input
+                                type="password"
+                                autoComplete="off"
+                                placeholder="64 hexadecimal characters"
+                                value={formValues.salt}
+                                onChange={(e) =>
+                                  setFormValues({
+                                    ...formValues,
+                                    salt: e.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+                            <label>
+                              Bidder secret
+                              <input
+                                type="password"
+                                autoComplete="off"
+                                placeholder="64 hexadecimal characters"
+                                value={formValues.bidder_secret}
+                                onChange={(e) =>
+                                  setFormValues({
+                                    ...formValues,
+                                    bidder_secret: e.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+                          </div>
+                        </details>
+                        <button type="submit">
+                          {isProving
+                            ? "Awaiting proof & confirmation…"
+                            : "Prove & submit commitment"}
+                        </button>
+                      <button type="button" disabled={!walletConnected || !contractDeployed || isProving} onClick={async()=>{if(isProving)return;setIsProving(true);try{await submitBid('revealBid');}finally{setIsProving(false);}}}>Reveal saved bid</button><p>Reveal only after the administrator opens the reveal phase. Use exactly the original amount, salt and bidder secret.</p></fieldset>
+                    </form>
+                    {(!walletConnected || !contractDeployed) && (
+                      <p className="form-hint">
+                        Connect a wallet and configure the contract to enable
+                        submission.
+                      </p>
+                    )}
+                  </section>
+                </div>
+              </>
+            )}
+            {activeTab === "walletHub" && (
+              <>
+                <div className="task-grid">
+                  <section className="panel">
+                    <p className="eyebrow">Connection</p>
+                    <h2>Your Midnight wallet</h2>
+                    <p>
+                      {laceDetected
+                        ? "Compatible wallet detected."
+                        : "Install and unlock a compatible 1AM or Lace wallet to continue."}
+                    </p>
+                    {walletConnected ? (
+                      <>
+                        <code>{walletAddress}</code>
+                        <p>Wallet-reported balance: {walletBalance} tNIGHT</p>
+                        <button onClick={disconnectLace}>
+                          Disconnect session
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        disabled={connectingWallet}
+                        onClick={connectLace}
+                      >
+                        {connectingWallet ? "Connecting…" : "Connect wallet"}
+                      </button>
+                    )}
+                  </section>
+                  <section className="panel">
+                    <p className="eyebrow">Test-network funding</p>
+                    <h2>Official faucet</h2>
+                    <p>
+                      Open the network faucet to request test tokens. Funding is
+                      not confirmed by opening this link.
+                    </p>
+                    <button
+                      className="secondary"
+                      onClick={requestFaucet}
+                      disabled={!walletConnected}
+                    >
+                      Open faucet ↗
+                    </button>
+                  </section>
+                </div>
+                <section className="panel activity">
+                  <h2>Session activity</h2>
+                  {logs.length ? (
+                    <ul>
+                      {logs.map((log, i) => (
+                        <li key={i}>
+                          <time>{log.timestamp}</time>
+                          <strong>{log.status}</strong>
+                          <p>{log.details}</p>
+                          <code>{log.hash}</code>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
+                  ) : (
+                    <p>No actions recorded in this session.</p>
                   )}
                 </section>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'deployer' && (
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '30px' }}>
-            <h2 style={{ fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#d97706' }}>
-              <Cpu className="w-6 h-6" /> Auction Smart Contract Deployer
-            </h2>
-            {contractDeployed ? (
-              <p style={{ color: '#10b981' }}>Deployed Preview Address: {contractAddress}</p>
-            ) : (
-              <button onClick={deployContractAction} disabled={isDeploying || !walletConnected}>
-                {isDeploying ? "Deploying..." : "Compile & Deploy Contract"}
-              </button>
+              </>
             )}
-
-            {isDeploying && (
-              <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(217, 119, 6, 0.05)', border: '1px dashed #d97706', borderRadius: '8px', fontSize: '0.8rem' }}>
-                {deploySteps.map((step, idx) => (
-                  <div key={idx} style={{ padding: '3px 0', color: idx === deployStep ? 'white' : 'var(--text-secondary)', opacity: idx <= deployStep ? 1 : 0.4 }}>
-                    {idx < deployStep ? '✓' : '●'} {step}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'walletHub' && (
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '30px' }}>
-            <h2 style={{ fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#d97706' }}>
-              <Wallet className="w-6 h-6" /> Wallet Hub
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginBottom: '30px' }}>
-              <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', padding: '24px', borderRadius: '12px' }}>
-                <h3>Lace Account</h3>
-                {walletConnected ? (
-                  <div>
-                    <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', fontSize: '0.85rem', marginBottom: '10px' }}>{walletAddress}</div>
-                    <button onClick={disconnectLace} style={{ width: 'auto', background: '#dc2626' }}>Disconnect</button>
-                  </div>
+            {activeTab === 'deployer' && <OperatorSetup wallet={walletConnected ? connectedWallet : null} address={runtimeIssue ? null : contractAddress} />}
+            {activeTab === "deployer" && (
+              <section className="panel setup-panel">
+                <p className="eyebrow">Operator tools</p>
+                <h2>Auction contract</h2>
+                <p>
+                  A deployment requires wallet approval. Loading a deployment
+                  record is not a live ledger-health check.
+                </p>
+                {contractDeployed ? (
+                  <>
+                    <h3>Configured contract address</h3>
+                    <code>{contractAddress}</code>
+                  </>
                 ) : (
-                  <button onClick={connectLace} style={{ width: 'auto' }}>Connect Wallet</button>
+                  <button
+                    onClick={deployContractAction}
+                    disabled={isDeploying || !walletConnected}
+                  >
+                    {isDeploying ? "Deploying…" : "Deploy contract"}
+                  </button>
                 )}
+                <p className="fineprint">
+                  Connect your wallet before deploying. Do not use production
+                  funds or sensitive real-world data.
+                </p>
+              </section>
+            )}
+            {activeTab === "privacy" && (
+              <div className="privacy-grid">
+                <section className="panel">
+                  <p className="eyebrow">Public information</p>
+                  <h2>What can be observed</h2>
+                  <p>
+                    Commitments are public. Bid amounts are hidden during
+                    commitment, then disclosed by the reveal circuit. Revealed
+                    bids, the highest bid, winner, and transaction activity are
+                    public.
+                  </p>
+                </section>
+                <section className="panel">
+                  <p className="eyebrow">Private inputs</p>
+                  <h2>Handle secrets carefully</h2>
+                  <p>
+                    Secrets and salts are provided to the proof workflow. Your
+                    configured proving provider may process witness data. Use
+                    test data and keep a secure backup of the inputs you need.
+                  </p>
+                </section>
+                <section className="notice">
+                  <h2>Understand the limits</h2>
+                  <p>
+                    A sealed commitment is not permanent bid confidentiality.
+                    Revealed amounts become public, and this interface does not
+                    implement reveal or auction administration controls. This is
+                    test-network software, not an audited production service.
+                  </p>
+                </section>
               </div>
-              <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', padding: '24px', borderRadius: '12px' }}>
-                <h3>tNIGHT Faucet Pool</h3>
-                <button onClick={requestFaucet} disabled={!walletConnected || faucetLoading}>
-                  {faucetLoading ? "Requesting..." : "Disburse Faucet Tokens"}
-                </button>
-              </div>
-            </div>
-
-            <section>
-              <h3>Recent Actions Logs</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {logs.map((log, idx) => (
-                  <div key={idx} style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#34d399', fontWeight: 600 }}>
-                      <span>{log.status}</span>
-                      <span style={{ color: 'var(--text-secondary)' }}>{log.timestamp}</span>
-                    </div>
-                    <div style={{ marginTop: '4px' }}>{log.details}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-        )}
-
-        {activeTab === 'privacy' && (
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '30px' }}>
-            <h2 style={{ fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#d97706' }}>
-              <Lock className="w-6 h-6" /> Zero-Knowledge Privacy Model
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
-              <div style={{ background: 'rgba(16, 185, 129, 0.03)', border: '1px solid rgba(16, 185, 129, 0.15)', padding: '24px', borderRadius: '12px' }}>
-                <h3 style={{ color: '#10b981' }}>Can Learn:</h3>
-                <ul>
-                  <li>Deployed contract logic binary.</li>
-                  <li>Cumulative bidding commitments index.</li>
-                </ul>
-              </div>
-              <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '24px', borderRadius: '12px' }}>
-                <h3 style={{ color: '#f87171' }}>Cannot Learn:</h3>
-                <ul>
-                  <li>Specific numeric bids of losing participants.</li>
-                  <li>Bid secret salts and transaction keys.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
+            )}
+          </main>
+        </div>
+      )}
+      <footer className="site-footer">
+        <span>Sealed Procurement / Confidential bidding</span>
+        <a href="#/">Project overview</a>
+        <span>Test-network use only</span>
+      </footer>
     </div>
   );
 }
